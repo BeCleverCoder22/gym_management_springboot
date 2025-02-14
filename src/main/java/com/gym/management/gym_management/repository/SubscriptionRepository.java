@@ -10,6 +10,8 @@ import java.util.List;
 
 public interface SubscriptionRepository extends JpaRepository<Subscription, Long> {
 
+    List<Subscription> findByStartDate(LocalDate startDate);
+
     @Query("SELECT SUM(p.monthlyPrice) FROM Subscription s JOIN s.pack p WHERE s.startDate <= CURRENT_DATE")
     Double calculateMonthlyRevenue();
 

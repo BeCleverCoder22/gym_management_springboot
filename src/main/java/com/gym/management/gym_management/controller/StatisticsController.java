@@ -35,6 +35,11 @@ public class StatisticsController {
             @RequestParam LocalDate startDate,
             @RequestParam LocalDate endDate) {
         try {
+
+            if (startDate.isAfter(endDate)) {
+                return ResponseEntity.badRequest().body("La date de début doit être avant la date de fin.".getBytes());
+            }
+
             byte[] fileData = statisticsService.exportSubscriptions(startDate, endDate);
 
             HttpHeaders headers = new HttpHeaders();
@@ -44,7 +49,7 @@ public class StatisticsController {
                     .headers(headers)
                     .body(fileData);
         } catch (IOException e) {
-            return ResponseEntity.internalServerError().body(null);
+            return ResponseEntity.internalServerError().body("Erreur lors de l'exportation.".getBytes());
         }
     }
 }

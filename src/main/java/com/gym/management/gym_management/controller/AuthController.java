@@ -45,20 +45,40 @@ public class AuthController {
          return ResponseEntity.ok(userRepository.save(user));
      }
 
-     @PostMapping("/login")
-     public ResponseEntity<?> login(@RequestBody User user) {
-         try {
-             Authentication authentication = authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(user.getUsername(), user.getPassword()));
-             if (authentication.isAuthenticated()) {
-                 Map<String, Object> authData = new HashMap<>();
-                 authData.put("token", jwtUtils.generateToken(user.getUsername()));
-                 authData.put("type", "Bearer");
-                 return ResponseEntity.ok(authData);
-             }
-             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid username or password");
-         } catch (AuthenticationException e) {
-             log.error(e.getMessage());
-             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid username or password");
-         }
-     }
+    @PostMapping("/login")
+    public ResponseEntity<?> login(@RequestBody User user) {
+        try {
+            Authentication authentication = authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(user.getUsername(), user.getPassword())
+            );
+
+            if (authentication.isAuthenticated()) {
+                // 🔹 Récupérer l'utilisateur authentifié depuis la base de données
+                User authenticatedUser = userRepository.findByUsername(user.getUsername());
+
+                // 🔹 Vérifier si l'utilisateur est `null`
+                if (authenticatedUser == null) {
+                    return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Utilisateur non trouvé");
+                }
+
+                // 🔹 Générer un token avec le rôle
+                String token = jwtUtils.generateToken(authenticatedUser.getUsername(), authenticatedUser.getRole());
+
+                // 🔹 Retourner les données d'authentification
+                Map<String, Object> authData = new HashMap<>();
+                authData.put("token", token);
+                authData.put("type", "Bearer");
+                authData.put("role", authenticatedUser.getRole()); // ✅ Ajout du rôle dans la réponse
+
+                return ResponseEntity.ok(authData);
+            }
+
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Identifiants invalides");
+        } catch (AuthenticationException e) {
+            log.error("Erreur d'authentification : " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Identifiants invalides");
+        }
+    }
+
+
 }

@@ -2,7 +2,9 @@ package com.gym.management.gym_management.service;
 
 
 import com.gym.management.gym_management.entity.Subscription;
+import com.gym.management.gym_management.entity.SubscriptionArchive;
 import com.gym.management.gym_management.repository.CustomerRepository;
+import com.gym.management.gym_management.repository.SubscriptionArchiveRepository;
 import com.gym.management.gym_management.repository.SubscriptionRepository;
 import com.opencsv.CSVWriter;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,6 +25,9 @@ public class StatisticsService implements IStatisticsService{
     @Autowired
     private SubscriptionRepository subscriptionRepository;
 
+    @Autowired
+    private SubscriptionArchiveRepository subscriptionArchiveRepository;
+
     @Override
     public long getActiveCustomersCount() {
         return customerRepository.countByActiveSubscription(true); // Nombre total de clients actifs
@@ -36,7 +41,8 @@ public class StatisticsService implements IStatisticsService{
 
     @Override
     public byte[] exportSubscriptions(LocalDate startDate, LocalDate endDate) throws IOException {
-        List<Subscription> subscriptions = subscriptionRepository.findSubscriptionsForPeriod(startDate, endDate);
+        List<Subscription> activeSubscriptions = subscriptionRepository.findSubscriptionsForPeriod(startDate, endDate);
+        List<SubscriptionArchive> archivedSubscriptions = subscriptionArchiveRepository.findSubscriptionsArchiveForPeriod(startDate, endDate);
 
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         try (CSVWriter writer = new CSVWriter(new OutputStreamWriter(outputStream))) {
@@ -47,18 +53,33 @@ public class StatisticsService implements IStatisticsService{
                     "Pack",
                     "Date de début",
                     "Date de fin",
-                    "Prix mensuel"
+                    "Prix mensuel",
+                    "Statut"
             });
 
-            // Données des abonnements
-            for (Subscription sub : subscriptions) {
+            // Données des abonnements actifs
+            for (Subscription sub : activeSubscriptions) {
                 writer.writeNext(new String[]{
                         sub.getId().toString(),
                         sub.getCustomer().getLastName() + " " + sub.getCustomer().getFirstName(),
                         sub.getPack().getOfferName(),
                         sub.getStartDate().toString(),
                         sub.getEndDate() != null ? sub.getEndDate().toString() : "En cours",
-                        String.valueOf(sub.getPack().getMonthlyPrice())
+                        String.valueOf(sub.getPack().getMonthlyPrice()),
+                        "Actif"
+                });
+            }
+
+            // Données des abonnements archivés
+            for (SubscriptionArchive sub : archivedSubscriptions) {
+                writer.writeNext(new String[]{
+                        sub.getId().toString(),
+                        sub.getCustomer().getLastName() + " " + sub.getCustomer().getFirstName(),
+                        sub.getPack().getOfferName(),
+                        sub.getStartDate().toString(),
+                        sub.getEndDate() != null ? sub.getEndDate().toString() : "En cours",
+                        String.valueOf(sub.getPack().getMonthlyPrice()),
+                        "Archivé"
                 });
             }
         }
