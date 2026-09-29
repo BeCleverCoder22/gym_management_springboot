@@ -2,6 +2,7 @@ package com.gym.management.gym_management.entity;
 
 import jakarta.persistence.*;
 import lombok.Data;
+import lombok.ToString;
 
 import java.time.LocalDateTime;
 
@@ -20,10 +21,19 @@ public class User {
     private String email;
 
     @Column(nullable = false)
+    @ToString.Exclude
     private String password;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private String role;
+    private UserRole role;
+
+    @Column
+    private Boolean enabled = true;
+    private int failedLoginAttempts;
+    private LocalDateTime lockedUntil;
+    private LocalDateTime lastFailedLoginAt;
+    private int tokenVersion;
 
     private LocalDateTime createdAt;
     private LocalDateTime lastLogin;
@@ -31,6 +41,9 @@ public class User {
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
+        if (enabled == null) {
+            enabled = true;
+        }
     }
 
 
@@ -41,11 +54,6 @@ public class User {
     public String getPassword() {
         return password;
     }
-
-    public String getRole() {
-        return role;
-    }
-
 
     public void setPassword(String password) {
         this.password = password;
@@ -59,8 +67,16 @@ public class User {
         this.email = email;
     }
 
-    public void setRole(String role) {
+    public void setRole(UserRole role) {
         this.role = role;
+    }
+
+    public Boolean getEnabled() {
+        return enabled;
+    }
+
+    public void setEnabled(Boolean enabled) {
+        this.enabled = enabled;
     }
 
     public void setUsername(String username) {

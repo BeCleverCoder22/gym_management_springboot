@@ -1,89 +1,161 @@
 package com.gym.management.gym_management.service;
 
-
+import com.gym.management.gym_management.dto.DashboardStatisticsResponse;
+import com.gym.management.gym_management.dto.MonthlyRevenueResponse;
+import com.gym.management.gym_management.dto.PackDistributionResponse;
 import com.gym.management.gym_management.entity.Subscription;
 import com.gym.management.gym_management.entity.SubscriptionArchive;
+import com.gym.management.gym_management.entity.SubscriptionStatus;
 import com.gym.management.gym_management.repository.CustomerRepository;
 import com.gym.management.gym_management.repository.SubscriptionArchiveRepository;
 import com.gym.management.gym_management.repository.SubscriptionRepository;
 import com.opencsv.CSVWriter;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.io.ByteArrayOutputStream;
-import java.io.OutputStreamWriter;
 import java.io.IOException;
+import java.io.OutputStreamWriter;
+import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
+import java.time.YearMonth;
+import java.time.Clock;
 import java.util.List;
 
 @Service
-public class StatisticsService implements IStatisticsService{
+public class StatisticsService implements IStatisticsService {
+    private static final BigDecimal ZERO = BigDecimal.ZERO;
 
-    @Autowired
-    private CustomerRepository customerRepository;
+    private final CustomerRepository customerRepository;
+    private final SubscriptionRepository subscriptionRepository;
+    private final SubscriptionArchiveRepository subscriptionArchiveRepository;
+    private final Clock clock;
 
-    @Autowired
-    private SubscriptionRepository subscriptionRepository;
-
-    @Autowired
-    private SubscriptionArchiveRepository subscriptionArchiveRepository;
-
-    @Override
-    public long getActiveCustomersCount() {
-        return customerRepository.countByActiveSubscription(true); // Nombre total de clients actifs
+    public StatisticsService(
+            CustomerRepository customerRepository,
+            SubscriptionRepository subscriptionRepository,
+            SubscriptionArchiveRepository subscriptionArchiveRepository,
+            Clock clock) {
+        this.customerRepository = customerRepository;
+        this.subscriptionRepository = subscriptionRepository;
+        this.subscriptionArchiveRepository = subscriptionArchiveRepository;
+        this.clock = clock;
     }
 
     @Override
-    public double getMonthlyRevenue() {
-        Double revenue = subscriptionRepository.calculateMonthlyRevenue(); // Chiffre d'affaires mensuel estimé
-        return (revenue != null) ? revenue : 0.0;
+    @Transactional(readOnly = true)
+    public DashboardStatisticsResponse getDashboard() {
+        LocalDate today = LocalDate.now(clock);
+        LocalDate monthStart = YearMonth.from(today).atDay(1);
+        List<PackDistributionResponse> distribution = subscriptionRepository
+                .countSubscriptionsByPack(SubscriptionStatus.CANCELLED).stream()
+                .map(row -> new PackDistributionResponse(
+                        (String) row[0], ((Number) row[1]).longValue()))
+                .toList();
+
+        return new DashboardStatisticsResponse(
+                customerRepository.count(),
+                subscriptionRepository.countActiveCustomersAsOf(SubscriptionStatus.ACTIVE, today),
+                customerRepository.countByRegistrationDateBetween(monthStart, today),
+                subscriptionRepository.countActiveAsOf(SubscriptionStatus.ACTIVE, today),
+                subscriptionRepository.countExpiredAsOf(SubscriptionStatus.CANCELLED, today),
+                subscriptionRepository.countExpiringBetween(
+                        SubscriptionStatus.ACTIVE, today, today.plusDays(30)),
+                subscriptionRepository.countSoldBetween(
+                        monthStart, today, SubscriptionStatus.CANCELLED),
+                getMonthlyRevenue(),
+                distribution
+        );
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public BigDecimal getMonthlyRevenue() {
+        BigDecimal revenue = subscriptionRepository.calculateMonthlyRevenue(
+                LocalDate.now(clock), SubscriptionStatus.ACTIVE);
+        return revenue == null ? ZERO : revenue;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public BigDecimal getRevenueForPeriod(LocalDate startDate, LocalDate endDate) {
+        BigDecimal revenue = subscriptionRepository.sumMonthlyValueStartedBetween(
+                startDate, endDate, SubscriptionStatus.CANCELLED);
+        return revenue == null ? ZERO : revenue;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<MonthlyRevenueResponse> getRevenueByMonth(LocalDate startDate, LocalDate endDate) {
+        return subscriptionRepository.sumMonthlyValueByMonth(startDate, endDate).stream()
+                .map(row -> new MonthlyRevenueResponse(
+                        toLocalDate(row[0]), (BigDecimal) row[1]))
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public byte[] exportSubscriptions(LocalDate startDate, LocalDate endDate) throws IOException {
-        List<Subscription> activeSubscriptions = subscriptionRepository.findSubscriptionsForPeriod(startDate, endDate);
-        List<SubscriptionArchive> archivedSubscriptions = subscriptionArchiveRepository.findSubscriptionsArchiveForPeriod(startDate, endDate);
+        List<Subscription> subscriptions =
+                subscriptionRepository.findSubscriptionsForPeriod(startDate, endDate);
+        List<SubscriptionArchive> archivedSubscriptions =
+                subscriptionArchiveRepository.findSubscriptionsArchiveForPeriod(startDate, endDate);
 
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-        try (CSVWriter writer = new CSVWriter(new OutputStreamWriter(outputStream))) {
-            // En-tête CSV
+        try (CSVWriter writer = new CSVWriter(
+                new OutputStreamWriter(outputStream, StandardCharsets.UTF_8))) {
             writer.writeNext(new String[]{
-                    "ID Abonnement",
-                    "Client",
-                    "Pack",
-                    "Date de début",
-                    "Date de fin",
-                    "Prix mensuel",
-                    "Statut"
+                    "ID Abonnement", "Client", "Pack", "Date de début", "Date de fin",
+                    "Prix mensuel", "Statut"
             });
 
-            // Données des abonnements actifs
-            for (Subscription sub : activeSubscriptions) {
+            for (Subscription subscription : subscriptions) {
                 writer.writeNext(new String[]{
-                        sub.getId().toString(),
-                        sub.getCustomer().getLastName() + " " + sub.getCustomer().getFirstName(),
-                        sub.getPack().getOfferName(),
-                        sub.getStartDate().toString(),
-                        sub.getEndDate() != null ? sub.getEndDate().toString() : "En cours",
-                        String.valueOf(sub.getPack().getMonthlyPrice()),
-                        "Actif"
+                        String.valueOf(subscription.getId()),
+                        safeCsv(subscription.getCustomer().getLastName() + " "
+                                + subscription.getCustomer().getFirstName()),
+                        safeCsv(subscription.getOfferNameAtPurchase()),
+                        String.valueOf(subscription.getStartDate()),
+                        String.valueOf(subscription.getEndDate()),
+                        String.valueOf(subscription.getMonthlyPriceAtPurchase()),
+                        subscription.getStatus().name()
                 });
             }
 
-            // Données des abonnements archivés
-            for (SubscriptionArchive sub : archivedSubscriptions) {
+            for (SubscriptionArchive subscription : archivedSubscriptions) {
                 writer.writeNext(new String[]{
-                        sub.getId().toString(),
-                        sub.getCustomer().getLastName() + " " + sub.getCustomer().getFirstName(),
-                        sub.getPack().getOfferName(),
-                        sub.getStartDate().toString(),
-                        sub.getEndDate() != null ? sub.getEndDate().toString() : "En cours",
-                        String.valueOf(sub.getPack().getMonthlyPrice()),
-                        "Archivé"
+                        String.valueOf(subscription.getId()),
+                        safeCsv(subscription.getCustomer().getLastName() + " "
+                                + subscription.getCustomer().getFirstName()),
+                        safeCsv(subscription.getOfferNameAtPurchase()),
+                        String.valueOf(subscription.getStartDate()),
+                        String.valueOf(subscription.getEndDate()),
+                        String.valueOf(subscription.getMonthlyPriceAtPurchase()),
+                        SubscriptionStatus.CANCELLED.name()
                 });
             }
         }
-
         return outputStream.toByteArray();
+    }
+
+    private LocalDate toLocalDate(Object value) {
+        if (value instanceof LocalDate date) {
+            return date;
+        }
+        if (value instanceof java.sql.Date date) {
+            return date.toLocalDate();
+        }
+        throw new IllegalStateException("Unexpected date type in monthly revenue query.");
+    }
+
+    private String safeCsv(String value) {
+        if (value == null || value.isEmpty()) {
+            return "";
+        }
+        char first = value.charAt(0);
+        return first == '=' || first == '+' || first == '-' || first == '@'
+                ? "'" + value
+                : value;
     }
 }

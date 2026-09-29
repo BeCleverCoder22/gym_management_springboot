@@ -1,46 +1,82 @@
 package com.gym.management.gym_management.service;
 
 import com.gym.management.gym_management.entity.Pack;
+import com.gym.management.gym_management.exception.ResourceNotFoundException;
 import com.gym.management.gym_management.repository.PackRepository;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-
-import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
-public class PackService implements IPackService{
-    @Autowired
-    private PackRepository packRepository;
+public class PackService implements IPackService {
+    private final PackRepository packRepository;
+    private final AuditService auditService;
 
-    @Override
-    public List<Pack> getAllPacks() {
-        return packRepository.findAll(); // Récupérer toutes les offres
+    public PackService(PackRepository packRepository, AuditService auditService) {
+        this.packRepository = packRepository;
+        this.auditService = auditService;
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public Page<Pack> getAllPacks(Pageable pageable) {
+        return packRepository.findByActiveTrue(pageable);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public Pack getPackById(Long id) {
         return packRepository.findById(id) // Récupérer une offre
-                .orElseThrow(() -> new RuntimeException("Pack non trouvé avec l'ID : " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Offre introuvable."));
     }
 
 
     @Override
-    public Pack addPack(Pack pack) {
-        return packRepository.save(pack); // Ajouter une nouvelle offre
+    @Transactional
+    public Pack addPack(String offerName, String description, int durationMonths,
+                        java.math.BigDecimal monthlyPrice) {
+        Pack pack = new Pack();
+        pack.setOfferName(offerName);
+        pack.setDescription(description);
+        pack.setDurationMonths(durationMonths);
+        pack.setMonthlyPrice(monthlyPrice);
+        Pack saved = packRepository.save(pack);
+        auditService.record("PACK_CREATED", "PACK", saved.getId());
+        return saved;
     }
 
     @Override
-    public Pack updatePack(Long id, Pack updatedPack) {
+    @Transactional
+    public Pack updatePack(Long id, String offerName, String description, int durationMonths,
+                           java.math.BigDecimal monthlyPrice) {
         return packRepository.findById(id).map(pack -> {
-            pack.setOfferName(updatedPack.getOfferName());
-            pack.setDurationMonths(updatedPack.getDurationMonths());
-            pack.setMonthlyPrice(updatedPack.getMonthlyPrice());
-            return packRepository.save(pack);
-        }).orElseThrow(() -> new RuntimeException("Pack non trouvé avec l'ID : " + id)); // Modifier une offre
+            pack.setOfferName(offerName);
+            pack.setDescription(description);
+            pack.setDurationMonths(durationMonths);
+            pack.setMonthlyPrice(monthlyPrice);
+            Pack saved = packRepository.save(pack);
+            auditService.record("PACK_UPDATED", "PACK", saved.getId());
+            return saved;
+        }).orElseThrow(() -> new ResourceNotFoundException("Offre introuvable."));
     }
 
     @Override
+    @Transactional
     public void deletePack(Long id) {
-        packRepository.deleteById(id); // Supprimer une offre
+        setActive(id, false);
+    }
+
+    @Override
+    @Transactional
+    public Pack setActive(Long id, boolean active) {
+        Pack pack = getPackById(id);
+        boolean changed = !Boolean.valueOf(active).equals(pack.getActive());
+        pack.setActive(active);
+        Pack saved = packRepository.save(pack);
+        if (changed) {
+            auditService.record(active ? "PACK_ACTIVATED" : "PACK_DEACTIVATED", "PACK", id);
+        }
+        return saved;
     }
 }

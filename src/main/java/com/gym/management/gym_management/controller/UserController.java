@@ -1,71 +1,89 @@
 package com.gym.management.gym_management.controller;
 
-
-
+import com.gym.management.gym_management.dto.AdminUserRequest;
+import com.gym.management.gym_management.dto.AdminUserUpdateRequest;
+import com.gym.management.gym_management.dto.ChangePasswordRequest;
+import com.gym.management.gym_management.dto.ProfileUpdateRequest;
+import com.gym.management.gym_management.dto.UserResponse;
+import com.gym.management.gym_management.dto.PageResponse;
+import com.gym.management.gym_management.configuration.PaginationSupport;
 import com.gym.management.gym_management.entity.User;
 import com.gym.management.gym_management.service.CustomUserDetailsService;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
+import org.springframework.data.domain.Pageable;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Map;
+import java.util.Set;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 
 @RestController
 @RequestMapping("/api/users")
+@Tag(name = "Utilisateurs")
+@SecurityRequirement(name = "bearerAuth")
 public class UserController {
-    private final CustomUserDetailsService customUserDetailsService;
+    private final CustomUserDetailsService userService;
 
-    public UserController(CustomUserDetailsService customUserDetailsService) {
-        this.customUserDetailsService = customUserDetailsService;
+    public UserController(CustomUserDetailsService userService) {
+        this.userService = userService;
     }
 
     @GetMapping
-    public ResponseEntity<List<User>> getAllUsers() {
-        return ResponseEntity.ok(customUserDetailsService.getAllUsers()); // Récupérer tous les utilisateurs
+    public PageResponse<UserResponse> getAllUsers(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "createdAt,desc") String sort) {
+        Pageable pageable = PaginationSupport.create(
+                page, size, sort, Set.of("id", "username", "email", "createdAt", "lastLogin"));
+        return PageResponse.from(userService.getAllUsers(pageable), UserResponse::from);
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<User> getUserById(@PathVariable Long id) {
-        return ResponseEntity.ok(customUserDetailsService.getUserById(id)); // Récupérer un utilisateur par son ID
+    public ResponseEntity<UserResponse> getUserById(@PathVariable Long id) {
+        return ResponseEntity.ok(UserResponse.from(userService.getUserById(id)));
     }
 
-
     @PostMapping
-    public ResponseEntity<User> createUser(@RequestBody User user) {
-        return ResponseEntity.ok(customUserDetailsService.createUser(user)); // Créer un nouvel utilisateur
+    public ResponseEntity<UserResponse> createUser(@Valid @RequestBody AdminUserRequest request) {
+        User user = userService.createUser(
+                request.username(), request.email(), request.password(), request.role()
+        );
+        return ResponseEntity.status(201).body(UserResponse.from(user));
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<User> updateUser(@PathVariable Long id, @RequestBody User user) {
-        return ResponseEntity.ok(customUserDetailsService.updateUser(id, user));  // Mettre à jour un utilisateur
+    public ResponseEntity<UserResponse> updateUser(
+            @PathVariable Long id,
+            @Valid @RequestBody AdminUserUpdateRequest request) {
+        User user = userService.updateUser(
+                id, request.username(), request.email(), request.role()
+        );
+        return ResponseEntity.ok(UserResponse.from(user));
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteUser(@PathVariable Long id) {
-        customUserDetailsService.deleteUser(id);
-        return ResponseEntity.noContent().build();  // Supprimer un utilisateur
+    @Operation(summary = "Désactiver un utilisateur (administrateur)")
+    public ResponseEntity<Void> deactivateUser(@PathVariable Long id) {
+        userService.deactivateUser(id);
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/me")
-    public ResponseEntity<User> getCurrentUser() {
-        User user = customUserDetailsService.getCurrentUser();
-        user.setPassword(null); // Ne pas renvoyer le mot de passe
-        return ResponseEntity.ok(user);
+    public ResponseEntity<UserResponse> getCurrentUser() {
+        return ResponseEntity.ok(UserResponse.from(userService.getCurrentUser()));
     }
 
     @PutMapping("/me")
-    public ResponseEntity<User> updateProfile(@RequestBody Map<String, String> payload) {
-        User updatedUser = customUserDetailsService.updateProfile(payload.get("email"));
-        updatedUser.setPassword(null);
-        return ResponseEntity.ok(updatedUser);
+    public ResponseEntity<UserResponse> updateProfile(@Valid @RequestBody ProfileUpdateRequest request) {
+        return ResponseEntity.ok(UserResponse.from(userService.updateProfile(request.email())));
     }
 
     @PostMapping("/change-password")
-    public ResponseEntity<?> changePassword(@RequestBody Map<String, String> payload) {
-        customUserDetailsService.changePassword(
-                payload.get("oldPassword"),
-                payload.get("newPassword")
-        );
-        return ResponseEntity.ok().build();
+    public ResponseEntity<Void> changePassword(@Valid @RequestBody ChangePasswordRequest request) {
+        userService.changePassword(request.oldPassword(), request.newPassword());
+        return ResponseEntity.noContent().build();
     }
 }

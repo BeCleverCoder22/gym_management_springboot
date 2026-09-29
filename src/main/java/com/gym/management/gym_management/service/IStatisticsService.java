@@ -1,14 +1,15 @@
 package com.gym.management.gym_management.service;
 
-import com.gym.management.gym_management.entity.Subscription;
-
 import java.io.IOException;
 import java.time.LocalDate;
-import java.util.List;
+import com.gym.management.gym_management.dto.DashboardStatisticsResponse;
+import com.gym.management.gym_management.dto.MonthlyRevenueResponse;
 
 public interface IStatisticsService {
 
-    public long getActiveCustomersCount();
-    public double getMonthlyRevenue();
+    DashboardStatisticsResponse getDashboard();
+    java.math.BigDecimal getMonthlyRevenue();
     public byte[] exportSubscriptions(LocalDate startDate, LocalDate endDate) throws IOException;
+    java.math.BigDecimal getRevenueForPeriod(LocalDate startDate, LocalDate endDate);
+    java.util.List<MonthlyRevenueResponse> getRevenueByMonth(LocalDate startDate, LocalDate endDate);
 }

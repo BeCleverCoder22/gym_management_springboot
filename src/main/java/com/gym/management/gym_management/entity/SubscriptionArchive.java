@@ -2,6 +2,8 @@ package com.gym.management.gym_management.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
+
+import java.math.BigDecimal;
 import java.time.LocalDate;
 
 @Entity
@@ -24,6 +26,11 @@ public class SubscriptionArchive {
 
     private LocalDate startDate;
     private LocalDate endDate;
+    private String offerNameAtPurchase;
+    private BigDecimal monthlyPriceAtPurchase;
+    private int durationMonthsAtPurchase;
+    @Enumerated(EnumType.STRING)
+    private SubscriptionStatus status;
     private Boolean isDeleted;  // Indiquer si l'abonnement a été supprimé
     private LocalDate deletionDate;  // Date de suppression
 
@@ -33,6 +40,10 @@ public class SubscriptionArchive {
         this.pack = subscription.getPack();
         this.startDate = subscription.getStartDate();
         this.endDate = subscription.getEndDate();
+        this.offerNameAtPurchase = subscription.getOfferNameAtPurchase();
+        this.monthlyPriceAtPurchase = subscription.getMonthlyPriceAtPurchase();
+        this.durationMonthsAtPurchase = subscription.getDurationMonthsAtPurchase();
+        this.status = SubscriptionStatus.CANCELLED;
         this.isDeleted = true;
         this.deletionDate = LocalDate.now(); // Date de suppression
     }
@@ -91,5 +102,21 @@ public class SubscriptionArchive {
 
     public void setDeletionDate(LocalDate deletionDate) {
         this.deletionDate = deletionDate;
+    }
+
+    public String getOfferNameAtPurchase() {
+        return offerNameAtPurchase != null ? offerNameAtPurchase : pack.getOfferName();
+    }
+
+    public BigDecimal getMonthlyPriceAtPurchase() {
+        return monthlyPriceAtPurchase != null ? monthlyPriceAtPurchase : pack.getMonthlyPrice();
+    }
+
+    public int getDurationMonthsAtPurchase() {
+        return durationMonthsAtPurchase > 0 ? durationMonthsAtPurchase : pack.getDurationMonths();
+    }
+
+    public SubscriptionStatus getStatus() {
+        return status;
     }
 }
