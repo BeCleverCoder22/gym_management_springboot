@@ -2,7 +2,9 @@ package com.gym.management.gym_management.configuration;
 
 import com.gym.management.gym_management.entity.User;
 import com.gym.management.gym_management.entity.UserRole;
+import com.gym.management.gym_management.entity.Organization;
 import com.gym.management.gym_management.repository.UserRepository;
+import com.gym.management.gym_management.repository.OrganizationRepository;
 import com.gym.management.gym_management.service.AuditService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,25 +25,34 @@ public class AdminBootstrapRunner implements ApplicationRunner {
     private static final Logger log = LoggerFactory.getLogger(AdminBootstrapRunner.class);
 
     private final UserRepository userRepository;
+    private final OrganizationRepository organizationRepository;
     private final PasswordEncoder passwordEncoder;
     private final AuditService auditService;
     private final String username;
     private final String email;
     private final String password;
+    private final String organizationName;
+    private final String organizationSlug;
 
     public AdminBootstrapRunner(
             UserRepository userRepository,
+            OrganizationRepository organizationRepository,
             PasswordEncoder passwordEncoder,
             AuditService auditService,
             @Value("${APP_BOOTSTRAP_ADMIN_USERNAME:}") String username,
             @Value("${APP_BOOTSTRAP_ADMIN_EMAIL:}") String email,
-            @Value("${APP_BOOTSTRAP_ADMIN_PASSWORD:}") String password) {
+            @Value("${APP_BOOTSTRAP_ADMIN_PASSWORD:}") String password,
+            @Value("${APP_BOOTSTRAP_ORGANIZATION_NAME:Gym Management}") String organizationName,
+            @Value("${APP_BOOTSTRAP_ORGANIZATION_SLUG:gym-management}") String organizationSlug) {
         this.userRepository = userRepository;
+        this.organizationRepository = organizationRepository;
         this.passwordEncoder = passwordEncoder;
         this.auditService = auditService;
         this.username = username;
         this.email = email;
         this.password = password;
+        this.organizationName = organizationName;
+        this.organizationSlug = organizationSlug;
     }
 
     @Override
@@ -61,14 +72,18 @@ public class AdminBootstrapRunner implements ApplicationRunner {
             return;
         }
 
+        Organization organization = organizationRepository.findBySlugIgnoreCaseAndActiveTrue(organizationSlug)
+                .orElseGet(() -> organizationRepository.save(
+                        new Organization(organizationName, organizationSlug)));
         User admin = new User();
+        admin.setOrganization(organization);
         admin.setUsername(username.trim());
         admin.setEmail(email.trim().toLowerCase(Locale.ROOT));
         admin.setPassword(passwordEncoder.encode(password));
         admin.setRole(UserRole.ADMIN);
         admin.setEnabled(true);
         User saved = userRepository.save(admin);
-        auditService.recordSystem("ADMIN_BOOTSTRAPPED", "USER", saved.getId());
+        auditService.recordSystem(organization.getId(), "ADMIN_BOOTSTRAPPED", "USER", saved.getId());
         log.info("Initial administrator account created.");
     }
 }

@@ -67,10 +67,14 @@ public class SecurityConfig {
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**",
                                 "/actuator/health", "/actuator/health/**", "/actuator/info").permitAll()
                         .requestMatchers("/api/auth/register", "/api/auth/login").permitAll()
+                        .requestMatchers("/api/payments/webhooks/**").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/api/users/me", "/api/users/change-password").authenticated()
                         .requestMatchers("/api/users/**").hasAuthority("ADMIN")
                         .requestMatchers("/api/audit/**").hasAuthority("ADMIN")
+                        .requestMatchers("/api/notifications/**").hasAuthority("ADMIN")
+                        .requestMatchers("/api/payments/*/refunds/**", "/api/payments/refunds/**",
+                                "/api/payments/*/cash-confirmation").hasAuthority("ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/packs/**").authenticated()
                         .requestMatchers("/api/packs/**").hasAuthority("ADMIN")
                         .requestMatchers("/actuator/**").hasAuthority("ADMIN")
@@ -112,7 +116,9 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.addAllowedOrigin(allowedOrigin);
         configuration.setAllowedMethods(java.util.List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(java.util.List.of("Authorization", "Content-Type", "Accept"));
+        configuration.setAllowedHeaders(java.util.List.of(
+                "Authorization", "Content-Type", "Accept", "X-Request-ID", "X-Payment-Signature"));
+        configuration.setExposedHeaders(java.util.List.of("X-Request-ID"));
         configuration.setAllowCredentials(false);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

@@ -48,22 +48,23 @@ public class StatisticsService implements IStatisticsService {
     public DashboardStatisticsResponse getDashboard() {
         LocalDate today = LocalDate.now(clock);
         LocalDate monthStart = YearMonth.from(today).atDay(1);
+        Long organizationId = TenantContext.requireOrganizationId();
         List<PackDistributionResponse> distribution = subscriptionRepository
-                .countSubscriptionsByPack(SubscriptionStatus.CANCELLED).stream()
+                .countSubscriptionsByPack(organizationId, SubscriptionStatus.CANCELLED).stream()
                 .map(row -> new PackDistributionResponse(
                         (String) row[0], ((Number) row[1]).longValue()))
                 .toList();
 
         return new DashboardStatisticsResponse(
-                customerRepository.count(),
-                subscriptionRepository.countActiveCustomersAsOf(SubscriptionStatus.ACTIVE, today),
-                customerRepository.countByRegistrationDateBetween(monthStart, today),
-                subscriptionRepository.countActiveAsOf(SubscriptionStatus.ACTIVE, today),
-                subscriptionRepository.countExpiredAsOf(SubscriptionStatus.CANCELLED, today),
+                customerRepository.countByOrganization_Id(organizationId),
+                subscriptionRepository.countActiveCustomersAsOf(organizationId, SubscriptionStatus.ACTIVE, today),
+                customerRepository.countByOrganization_IdAndRegistrationDateBetween(organizationId, monthStart, today),
+                subscriptionRepository.countActiveAsOf(organizationId, SubscriptionStatus.ACTIVE, today),
+                subscriptionRepository.countExpiredAsOf(organizationId, SubscriptionStatus.CANCELLED, today),
                 subscriptionRepository.countExpiringBetween(
-                        SubscriptionStatus.ACTIVE, today, today.plusDays(30)),
+                        organizationId, SubscriptionStatus.ACTIVE, today, today.plusDays(30)),
                 subscriptionRepository.countSoldBetween(
-                        monthStart, today, SubscriptionStatus.CANCELLED),
+                        organizationId, monthStart, today, SubscriptionStatus.CANCELLED),
                 getMonthlyRevenue(),
                 distribution
         );
@@ -73,7 +74,7 @@ public class StatisticsService implements IStatisticsService {
     @Transactional(readOnly = true)
     public BigDecimal getMonthlyRevenue() {
         BigDecimal revenue = subscriptionRepository.calculateMonthlyRevenue(
-                LocalDate.now(clock), SubscriptionStatus.ACTIVE);
+                TenantContext.requireOrganizationId(), LocalDate.now(clock), SubscriptionStatus.ACTIVE);
         return revenue == null ? ZERO : revenue;
     }
 
@@ -81,14 +82,15 @@ public class StatisticsService implements IStatisticsService {
     @Transactional(readOnly = true)
     public BigDecimal getRevenueForPeriod(LocalDate startDate, LocalDate endDate) {
         BigDecimal revenue = subscriptionRepository.sumMonthlyValueStartedBetween(
-                startDate, endDate, SubscriptionStatus.CANCELLED);
+                TenantContext.requireOrganizationId(), startDate, endDate, SubscriptionStatus.CANCELLED);
         return revenue == null ? ZERO : revenue;
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<MonthlyRevenueResponse> getRevenueByMonth(LocalDate startDate, LocalDate endDate) {
-        return subscriptionRepository.sumMonthlyValueByMonth(startDate, endDate).stream()
+        return subscriptionRepository.sumMonthlyValueByMonth(
+                        TenantContext.requireOrganizationId(), startDate, endDate).stream()
                 .map(row -> new MonthlyRevenueResponse(
                         toLocalDate(row[0]), (BigDecimal) row[1]))
                 .toList();
@@ -98,9 +100,11 @@ public class StatisticsService implements IStatisticsService {
     @Transactional(readOnly = true)
     public byte[] exportSubscriptions(LocalDate startDate, LocalDate endDate) throws IOException {
         List<Subscription> subscriptions =
-                subscriptionRepository.findSubscriptionsForPeriod(startDate, endDate);
+                subscriptionRepository.findSubscriptionsForPeriod(
+                        TenantContext.requireOrganizationId(), startDate, endDate);
         List<SubscriptionArchive> archivedSubscriptions =
-                subscriptionArchiveRepository.findSubscriptionsArchiveForPeriod(startDate, endDate);
+                subscriptionArchiveRepository.findSubscriptionsArchiveForPeriod(
+                        TenantContext.requireOrganizationId(), startDate, endDate);
 
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         try (CSVWriter writer = new CSVWriter(

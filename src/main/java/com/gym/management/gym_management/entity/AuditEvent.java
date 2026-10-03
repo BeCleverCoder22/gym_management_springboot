@@ -14,6 +14,10 @@ public class AuditEvent {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "organization_id", nullable = false)
+    private Organization organization;
+
     @Column(nullable = false, length = 100)
     private String actor;
 
@@ -32,7 +36,8 @@ public class AuditEvent {
     protected AuditEvent() {
     }
 
-    public AuditEvent(String actor, String action, String resourceType, String resourceId) {
+    public AuditEvent(Organization organization, String actor, String action, String resourceType, String resourceId) {
+        this.organization = organization;
         this.actor = actor;
         this.action = action;
         this.resourceType = resourceType;
@@ -42,6 +47,10 @@ public class AuditEvent {
 
     public Long getId() {
         return id;
+    }
+
+    public Organization getOrganization() {
+        return organization;
     }
 
     public String getActor() {

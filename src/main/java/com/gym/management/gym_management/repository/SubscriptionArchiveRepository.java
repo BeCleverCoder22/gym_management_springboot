@@ -9,7 +9,14 @@ import java.time.LocalDate;
 import java.util.List;
 
 public interface SubscriptionArchiveRepository extends JpaRepository<SubscriptionArchive, Long> {
-    @Query("SELECT sa FROM SubscriptionArchive sa WHERE sa.startDate BETWEEN :startDate AND :endDate")
+    @Query("""
+            SELECT sa FROM SubscriptionArchive sa
+            WHERE sa.organization.id = :organizationId
+              AND sa.startDate BETWEEN :startDate AND :endDate
+            """)
     @EntityGraph(attributePaths = {"customer", "pack"})
-    List<SubscriptionArchive> findSubscriptionsArchiveForPeriod(LocalDate startDate, LocalDate endDate);
+    List<SubscriptionArchive> findSubscriptionsArchiveForPeriod(
+            @org.springframework.data.repository.query.Param("organizationId") Long organizationId,
+            @org.springframework.data.repository.query.Param("startDate") LocalDate startDate,
+            @org.springframework.data.repository.query.Param("endDate") LocalDate endDate);
 }

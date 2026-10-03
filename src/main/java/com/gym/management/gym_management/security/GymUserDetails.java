@@ -17,15 +17,21 @@ public class GymUserDetails implements UserDetails {
     private final boolean enabled;
     private final LocalDateTime lockedUntil;
     private final int tokenVersion;
+    private final Long organizationId;
+    private final String organizationSlug;
     private final Clock clock;
 
     public GymUserDetails(User user, Clock clock) {
         this.username = user.getUsername();
         this.password = user.getPassword();
         this.role = user.getRole().name();
-        this.enabled = !Boolean.FALSE.equals(user.getEnabled());
+        this.enabled = !Boolean.FALSE.equals(user.getEnabled())
+                && user.getOrganization() != null
+                && user.getOrganization().isActive();
         this.lockedUntil = user.getLockedUntil();
         this.tokenVersion = user.getTokenVersion();
+        this.organizationId = user.getOrganization().getId();
+        this.organizationSlug = user.getOrganization().getSlug();
         this.clock = clock;
     }
 
@@ -66,5 +72,13 @@ public class GymUserDetails implements UserDetails {
 
     public int getTokenVersion() {
         return tokenVersion;
+    }
+
+    public Long getOrganizationId() {
+        return organizationId;
+    }
+
+    public String getOrganizationSlug() {
+        return organizationSlug;
     }
 }

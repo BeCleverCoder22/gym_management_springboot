@@ -2,6 +2,7 @@ package com.gym.management.gym_management.configuration;
 
 import com.gym.management.gym_management.entity.User;
 import com.gym.management.gym_management.entity.UserRole;
+import com.gym.management.gym_management.entity.Organization;
 import com.gym.management.gym_management.security.GymUserDetails;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -15,7 +16,7 @@ class JwtUtilsTest {
     @Test
     void generatedTokenIsSignedAndBoundToItsSubject() {
         JwtUtils jwtUtils = new JwtUtils(SIGNING_KEY, 60_000);
-        String token = jwtUtils.generateToken("trainer", "USER");
+        String token = jwtUtils.generateToken("trainer", "USER", 0, 7L);
         UserDetails matchingUser = user("trainer");
         UserDetails differentUser = user("another-trainer");
 
@@ -38,18 +39,26 @@ class JwtUtilsTest {
         user.setPassword("encoded");
         user.setRole(UserRole.USER);
         user.setTokenVersion(4);
+        user.setOrganization(new Organization("Gym", "gym"));
+        org.springframework.test.util.ReflectionTestUtils.setField(
+                user.getOrganization(), "id", 7L);
         GymUserDetails principal = new GymUserDetails(user, java.time.Clock.systemUTC());
 
-        String currentToken = jwtUtils.generateToken("trainer", "USER", 4);
-        String revokedToken = jwtUtils.generateToken("trainer", "USER", 3);
+        String currentToken = jwtUtils.generateToken("trainer", "USER", 4, 7L);
+        String revokedToken = jwtUtils.generateToken("trainer", "USER", 3, 7L);
 
         assertTrue(jwtUtils.validateToken(currentToken, principal));
         assertFalse(jwtUtils.validateToken(revokedToken, principal));
     }
 
     private UserDetails user(String username) {
-        return org.springframework.security.core.userdetails.User.withUsername(username)
-                .password("unused").authorities("USER").build();
+        User user = new User();
+        user.setUsername(username);
+        user.setPassword("unused");
+        user.setRole(UserRole.USER);
+        user.setOrganization(new Organization("Gym", "gym"));
+        org.springframework.test.util.ReflectionTestUtils.setField(user.getOrganization(), "id", 7L);
+        return new GymUserDetails(user, java.time.Clock.systemUTC());
     }
 
     private static String generateSigningKey() {

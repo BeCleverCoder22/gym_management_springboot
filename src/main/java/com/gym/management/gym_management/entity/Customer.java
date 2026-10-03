@@ -20,6 +20,10 @@ public class Customer {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "organization_id", nullable = false)
+    private Organization organization;
+
     private String lastName;
     private String firstName;
 
@@ -27,6 +31,7 @@ public class Customer {
     private LocalDate registrationDate;
 
     private String phoneNumber;
+    private String email;
 
     private boolean activeSubscription;
     private Boolean enabled = true;
@@ -58,6 +63,14 @@ public class Customer {
         return id;
     }
 
+    public Organization getOrganization() {
+        return organization;
+    }
+
+    public void setOrganization(Organization organization) {
+        this.organization = organization;
+    }
+
     public String getLastName() {
         return lastName;
     }
@@ -72,6 +85,10 @@ public class Customer {
 
     public String getPhoneNumber() {
         return phoneNumber;
+    }
+
+    public String getEmail() {
+        return email;
     }
 
     public boolean isActiveSubscription() {
@@ -92,6 +109,10 @@ public class Customer {
 
     public void setPhoneNumber(String phoneNumber) {
         this.phoneNumber = phoneNumber;
+    }
+
+    public void setEmail(String email) {
+        this.email = email;
     }
 
     public void setActiveSubscription(boolean activeSubscription) {

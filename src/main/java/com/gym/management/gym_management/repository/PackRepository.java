@@ -6,5 +6,6 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
 public interface PackRepository extends JpaRepository<Pack, Long> {
-    Page<Pack> findByActiveTrue(Pageable pageable);
+    Page<Pack> findByOrganization_IdAndActiveTrue(Long organizationId, Pageable pageable);
+    java.util.Optional<Pack> findByIdAndOrganization_Id(Long id, Long organizationId);
 }

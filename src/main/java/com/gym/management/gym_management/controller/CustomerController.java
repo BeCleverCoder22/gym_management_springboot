@@ -52,7 +52,7 @@ public class CustomerController {
     @Operation(summary = "Créer un client")
     public ResponseEntity<CustomerResponse> addCustomer(@Valid @RequestBody CustomerRequest request) {
         CustomerResponse customer = CustomerResponse.from(customerService.addCustomer(
-                request.firstName(), request.lastName(), request.phoneNumber()));
+                request.firstName(), request.lastName(), request.phoneNumber(), request.email()));
         return ResponseEntity.created(URI.create("/api/customers/" + customer.id())).body(customer);
     }
 
@@ -72,7 +72,7 @@ public class CustomerController {
     public CustomerResponse updateCustomer(
             @PathVariable Long id, @Valid @RequestBody CustomerRequest request) {
         return CustomerResponse.from(customerService.updateCustomer(
-                id, request.firstName(), request.lastName(), request.phoneNumber()));
+                id, request.firstName(), request.lastName(), request.phoneNumber(), request.email()));
     }
 
     @DeleteMapping("/{id}")

@@ -36,9 +36,11 @@ public class AuthController {
     }
 
     @PostMapping("/register")
-    @Operation(summary = "Créer un compte utilisateur public (rôle USER)")
+    @Operation(summary = "Créer une organisation et son premier compte administrateur")
     public ResponseEntity<UserResponse> register(@Valid @RequestBody AuthRequest request) {
-        User registeredUser = userService.register(request.username(), request.email(), request.password());
+        User registeredUser = userService.register(
+                request.organizationName(), request.organizationSlug(),
+                request.username(), request.email(), request.password());
         return ResponseEntity.status(HttpStatus.CREATED).body(UserResponse.from(registeredUser));
     }
 
@@ -47,16 +49,18 @@ public class AuthController {
     public ResponseEntity<TokenResponse> login(@Valid @RequestBody LoginRequest request) {
         try {
             authenticationManager.authenticate(
-                    new UsernamePasswordAuthenticationToken(request.username(), request.password())
+                    new UsernamePasswordAuthenticationToken(
+                            request.organizationSlug() + "::" + request.username(), request.password())
             );
         } catch (AuthenticationException exception) {
-            userService.recordFailedLogin(request.username());
+            userService.recordFailedLogin(request.username(), request.organizationSlug());
             throw new InvalidCredentialsException();
         }
 
-        User user = userService.recordSuccessfulLogin(request.username());
+        User user = userService.recordSuccessfulLogin(request.username(), request.organizationSlug());
         String role = user.getRole().name();
-        String token = jwtUtils.generateToken(user.getUsername(), role, user.getTokenVersion());
+        String token = jwtUtils.generateToken(
+                user.getUsername(), role, user.getTokenVersion(), user.getOrganization().getId());
         return ResponseEntity.ok(new TokenResponse(token, "Bearer", role));
     }
 

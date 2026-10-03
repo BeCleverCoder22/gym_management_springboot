@@ -10,6 +10,7 @@ public record CustomerResponse(
         String lastName,
         LocalDate registrationDate,
         String phoneNumber,
+        String email,
         boolean activeSubscription,
         boolean enabled
 ) {
@@ -20,6 +21,7 @@ public record CustomerResponse(
                 customer.getLastName(),
                 customer.getRegistrationDate(),
                 customer.getPhoneNumber(),
+                customer.getEmail(),
                 customer.isActiveSubscription(),
                 !Boolean.FALSE.equals(customer.getEnabled())
         );

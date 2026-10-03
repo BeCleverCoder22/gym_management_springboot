@@ -29,27 +29,34 @@ public class JwtUtils {
         this.expirationTime = expirationTime;
     }
 
-    public String generateToken(String username, String role) {
-        return generateToken(username, role, 0);
-    }
-
-    public String generateToken(String username, String role, int tokenVersion) {
+    public String generateToken(String username, String role, int tokenVersion, Long organizationId) {
+        if (organizationId == null || organizationId <= 0) {
+            throw new IllegalArgumentException("Organization ID must be positive.");
+        }
         Date now = new Date();
         return Jwts.builder()
                 .setSubject(username)
                 .claim("role", role)
                 .claim("tokenVersion", tokenVersion)
+                .claim("organizationId", organizationId)
                 .setIssuedAt(now)
                 .setExpiration(new Date(now.getTime() + expirationTime))
                 .signWith(signingKey, SignatureAlgorithm.HS256)
                 .compact();
     }
 
+    public Long extractOrganizationId(String token) {
+        return extractAllClaims(token).get("organizationId", Long.class);
+    }
+
     public boolean validateToken(String token, UserDetails userDetails) {
         Claims claims = extractAllClaims(token);
         boolean matchingVersion = !(userDetails instanceof GymUserDetails gymUserDetails)
                 || Objects.equals(claims.get("tokenVersion", Integer.class), gymUserDetails.getTokenVersion());
+        boolean matchingOrganization = !(userDetails instanceof GymUserDetails gymUserDetails)
+                || Objects.equals(claims.get("organizationId", Long.class), gymUserDetails.getOrganizationId());
         return matchingVersion
+                && matchingOrganization
                 && Objects.equals(claims.getSubject(), userDetails.getUsername())
                 && claims.getExpiration() != null
                 && claims.getExpiration().after(new Date());

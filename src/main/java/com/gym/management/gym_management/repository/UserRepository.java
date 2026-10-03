@@ -1,21 +1,21 @@
 package com.gym.management.gym_management.repository;
 
 import com.gym.management.gym_management.entity.User;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Lock;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
-import jakarta.persistence.LockModeType;
 
 import java.util.Optional;
 
 public interface UserRepository extends JpaRepository<User, Long> {
-    User findByUsername(String username);
-    boolean existsByEmail(String email); // Vérifie si un email existe déjà
-    boolean existsByEmailIgnoreCase(String email);
-    boolean existsByUsername(String username); // Vérifie si un username existe déjà
+    @EntityGraph(attributePaths = "organization")
+    Optional<User> findByUsernameAndOrganization_Id(String username, Long organizationId);
 
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("SELECT u FROM User u WHERE u.username = :username")
-    Optional<User> findByUsernameForUpdate(@Param("username") String username);
+    @EntityGraph(attributePaths = "organization")
+    User findByUsernameAndOrganization_SlugIgnoreCase(String username, String organizationSlug);
+    boolean existsByUsernameAndOrganization_Id(String username, Long organizationId);
+    boolean existsByEmailIgnoreCaseAndOrganization_Id(String email, Long organizationId);
+    org.springframework.data.domain.Page<User> findByOrganization_Id(Long organizationId,
+            org.springframework.data.domain.Pageable pageable);
+    Optional<User> findByIdAndOrganization_Id(Long id, Long organizationId);
+    boolean existsByEmailIgnoreCase(String email);
 }

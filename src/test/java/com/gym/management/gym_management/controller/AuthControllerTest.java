@@ -38,20 +38,23 @@ class AuthControllerTest {
         user.setUsername("new-user");
         user.setEmail("user@example.com");
         user.setPassword("$2a$12$hashed-password");
-        user.setRole(UserRole.USER);
-        when(userService.register("new-user", "user@example.com", TEST_PASSWORD))
+        user.setRole(UserRole.ADMIN);
+        when(userService.register("Fitness Center", "fitness-center",
+                "new-user", "user@example.com", TEST_PASSWORD))
                 .thenReturn(user);
 
         var response = controller.register(
-                new AuthRequest("new-user", "user@example.com", TEST_PASSWORD));
+                new AuthRequest("Fitness Center", "fitness-center",
+                        "new-user", "user@example.com", TEST_PASSWORD));
 
         assertEquals(HttpStatus.CREATED, response.getStatusCode());
-        assertEquals("USER", response.getBody().role());
+        assertEquals("ADMIN", response.getBody().role());
         String json = new ObjectMapper().writeValueAsString(response.getBody());
         assertFalse(json.contains("password"));
         assertFalse(json.contains("$2a$12$"));
         assertTrue(java.util.Arrays.stream(AuthRequest.class.getRecordComponents())
                 .noneMatch(component -> component.getName().equals("role")));
-        verify(userService).register("new-user", "user@example.com", TEST_PASSWORD);
+        verify(userService).register("Fitness Center", "fitness-center",
+                "new-user", "user@example.com", TEST_PASSWORD);
     }
 }

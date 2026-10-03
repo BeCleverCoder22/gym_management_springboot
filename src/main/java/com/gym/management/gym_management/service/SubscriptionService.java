@@ -1,6 +1,7 @@
 package com.gym.management.gym_management.service;
 
 import com.gym.management.gym_management.entity.Customer;
+import com.gym.management.gym_management.entity.Organization;
 import com.gym.management.gym_management.entity.Pack;
 import com.gym.management.gym_management.entity.Subscription;
 import com.gym.management.gym_management.entity.SubscriptionArchive;
@@ -11,9 +12,11 @@ import com.gym.management.gym_management.repository.CustomerRepository;
 import com.gym.management.gym_management.repository.PackRepository;
 import com.gym.management.gym_management.repository.SubscriptionArchiveRepository;
 import com.gym.management.gym_management.repository.SubscriptionRepository;
+import com.gym.management.gym_management.repository.OrganizationRepository;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,7 +37,9 @@ public class SubscriptionService implements ISubscriptionService {
     private final PackRepository packRepository;
     private final SubscriptionArchiveRepository subscriptionArchiveRepository;
     private final AuditService auditService;
+    private final OrganizationRepository organizationRepository;
     private final Clock clock;
+    private final NotificationOutboxService notificationService;
 
     public SubscriptionService(
             SubscriptionRepository subscriptionRepository,
@@ -42,25 +47,29 @@ public class SubscriptionService implements ISubscriptionService {
             PackRepository packRepository,
             SubscriptionArchiveRepository subscriptionArchiveRepository,
             AuditService auditService,
-            Clock clock) {
+            OrganizationRepository organizationRepository,
+            Clock clock,
+            NotificationOutboxService notificationService) {
         this.subscriptionRepository = subscriptionRepository;
         this.customerRepository = customerRepository;
         this.packRepository = packRepository;
         this.subscriptionArchiveRepository = subscriptionArchiveRepository;
         this.auditService = auditService;
+        this.organizationRepository = organizationRepository;
         this.clock = clock;
+        this.notificationService = notificationService;
     }
 
     @Override
     @Transactional(readOnly = true)
     public Page<Subscription> getAllSubscriptions(Pageable pageable) {
-        return subscriptionRepository.findAll(pageable);
+        return subscriptionRepository.findByOrganization_Id(TenantContext.requireOrganizationId(), pageable);
     }
 
     @Override
     @Transactional(readOnly = true)
     public Subscription getSubscriptionById(Long id) {
-        return subscriptionRepository.findById(id)
+        return subscriptionRepository.findByIdAndOrganization_Id(id, TenantContext.requireOrganizationId())
                 .orElseThrow(() -> new ResourceNotFoundException("Abonnement introuvable."));
     }
 
@@ -69,7 +78,14 @@ public class SubscriptionService implements ISubscriptionService {
     public Subscription addSubscription(Long customerId, Long packId, LocalDate startDate) {
         Customer customer = lockCustomer(customerId);
         Pack pack = getActivePack(packId);
+        Organization organization = organizationRepository.getReferenceById(
+                TenantContext.requireOrganizationId());
+        if (!organization.getId().equals(customer.getOrganization().getId())
+                || !organization.getId().equals(pack.getOrganization().getId())) {
+            throw new ResourceNotFoundException("Client ou offre introuvable dans cette organisation.");
+        }
         Subscription subscription = new Subscription();
+        subscription.setOrganization(organization);
         subscription.setCustomer(customer);
         subscription.setPack(pack);
         subscription.setStartDate(startDate);
@@ -79,6 +95,7 @@ public class SubscriptionService implements ISubscriptionService {
         Subscription saved = subscriptionRepository.save(subscription);
         updateCustomerSubscriptionFlag(customer);
         auditService.record("SUBSCRIPTION_CREATED", "SUBSCRIPTION", saved.getId());
+        notificationService.subscriptionCreated(saved);
         return saved;
     }
 
@@ -86,7 +103,8 @@ public class SubscriptionService implements ISubscriptionService {
     @Transactional
     public Subscription updateSubscription(
             Long id, Long customerId, Long packId, LocalDate startDate) {
-        Subscription subscription = subscriptionRepository.findByIdForUpdate(id)
+        Long organizationId = TenantContext.requireOrganizationId();
+        Subscription subscription = subscriptionRepository.findByIdForUpdate(id, organizationId)
                 .orElseThrow(() -> new ResourceNotFoundException("Abonnement introuvable."));
         if (subscription.getStatus() != SubscriptionStatus.SCHEDULED) {
             throw new ConflictException("Seuls les abonnements planifiés peuvent être modifiés.");
@@ -95,6 +113,10 @@ public class SubscriptionService implements ISubscriptionService {
         Customer previousCustomer = subscription.getCustomer();
         Customer customer = lockCustomer(customerId);
         Pack pack = getActivePack(packId);
+        if (!organizationId.equals(customer.getOrganization().getId())
+                || !organizationId.equals(pack.getOrganization().getId())) {
+            throw new ResourceNotFoundException("Client ou offre introuvable dans cette organisation.");
+        }
         subscription.setCustomer(customer);
         subscription.setPack(pack);
         subscription.setStartDate(startDate);
@@ -111,7 +133,8 @@ public class SubscriptionService implements ISubscriptionService {
     @Override
     @Transactional
     public Subscription renewSubscription(Long subscriptionId) {
-        Subscription previous = subscriptionRepository.findById(subscriptionId)
+        Subscription previous = subscriptionRepository.findByIdForUpdate(
+                        subscriptionId, TenantContext.requireOrganizationId())
                 .orElseThrow(() -> new ResourceNotFoundException("Abonnement introuvable."));
         LocalDate nextStart = previous.getEndDate().plusDays(1);
         if (nextStart.isBefore(LocalDate.now(clock))) {
@@ -124,16 +147,19 @@ public class SubscriptionService implements ISubscriptionService {
     @Override
     @Transactional(readOnly = true)
     public Page<Subscription> getSubscriptionsByCustomerId(Long customerId, Pageable pageable) {
-        if (!customerRepository.existsById(customerId)) {
+        if (!customerRepository.existsByIdAndOrganization_IdAndEnabledTrue(
+                customerId, TenantContext.requireOrganizationId())) {
             throw new ResourceNotFoundException("Client introuvable.");
         }
-        return subscriptionRepository.findByCustomerId(customerId, pageable);
+        return subscriptionRepository.findByCustomerIdAndOrganization_Id(
+                customerId, TenantContext.requireOrganizationId(), pageable);
     }
 
     @Override
     @Transactional
     public void deleteSubscription(Long subscriptionId) {
-        Subscription subscription = subscriptionRepository.findByIdForUpdate(subscriptionId)
+        Subscription subscription = subscriptionRepository.findByIdForUpdate(
+                        subscriptionId, TenantContext.requireOrganizationId())
                 .orElseThrow(() -> new ResourceNotFoundException("Abonnement introuvable."));
         if (subscription.getStatus() == SubscriptionStatus.CANCELLED) {
             throw new ConflictException("Cet abonnement est déjà annulé.");
@@ -164,7 +190,7 @@ public class SubscriptionService implements ISubscriptionService {
                     subscription.getStartDate(), subscription.getEndDate(), today));
             toUpdate.add(subscription);
             affectedCustomerIds.add(subscription.getCustomer().getId());
-            auditService.recordSystem(
+            auditService.recordSystem(subscription.getOrganization().getId(),
                     "SUBSCRIPTION_STATUS_CHANGED", "SUBSCRIPTION", subscription.getId());
         }
 
@@ -173,7 +199,8 @@ public class SubscriptionService implements ISubscriptionService {
             subscription.setStatus(SubscriptionStatus.EXPIRED);
             toUpdate.add(subscription);
             affectedCustomerIds.add(subscription.getCustomer().getId());
-            auditService.recordSystem(
+            notificationService.subscriptionExpired(subscription);
+            auditService.recordSystem(subscription.getOrganization().getId(),
                     "SUBSCRIPTION_STATUS_CHANGED", "SUBSCRIPTION", subscription.getId());
         }
 
@@ -183,7 +210,7 @@ public class SubscriptionService implements ISubscriptionService {
             subscription.setStatus(resolved);
             toUpdate.add(subscription);
             affectedCustomerIds.add(subscription.getCustomer().getId());
-            auditService.recordSystem(
+            auditService.recordSystem(subscription.getOrganization().getId(),
                     "SUBSCRIPTION_STATUS_CHANGED", "SUBSCRIPTION", subscription.getId());
         }
 
@@ -193,13 +220,28 @@ public class SubscriptionService implements ISubscriptionService {
         }
     }
 
+    @Scheduled(cron = "${app.subscription.expiry-reminder-cron:0 0 2 * * *}",
+            zone = "${app.time-zone:UTC}")
+    @Transactional
+    public void enqueueExpiryReminders() {
+        LocalDate reminderDate = LocalDate.now(clock).plusDays(7);
+        int pageNumber = 0;
+        List<Subscription> subscriptions;
+        do {
+            subscriptions = subscriptionRepository.findByStatusAndEndDate(
+                            SubscriptionStatus.ACTIVE, reminderDate, PageRequest.of(pageNumber++, 500))
+                    .getContent();
+            subscriptions.forEach(notificationService::subscriptionExpiring);
+        } while (subscriptions.size() == 500);
+    }
+
     private Customer lockCustomer(Long customerId) {
-        return customerRepository.findByIdForUpdate(customerId)
+        return customerRepository.findByIdForUpdate(customerId, TenantContext.requireOrganizationId())
                 .orElseThrow(() -> new ResourceNotFoundException("Client introuvable."));
     }
 
     private Pack getActivePack(Long packId) {
-        Pack pack = packRepository.findById(packId)
+        Pack pack = packRepository.findByIdAndOrganization_Id(packId, TenantContext.requireOrganizationId())
                 .orElseThrow(() -> new ResourceNotFoundException("Offre introuvable."));
         if (Boolean.FALSE.equals(pack.getActive())) {
             throw new ConflictException("Cette offre n'est plus disponible.");
@@ -211,9 +253,11 @@ public class SubscriptionService implements ISubscriptionService {
             Long customerId, Long excludedSubscriptionId, LocalDate startDate, LocalDate endDate) {
         boolean overlaps = excludedSubscriptionId == null
                 ? subscriptionRepository.existsOverlappingSubscription(
-                        customerId, startDate, endDate, NON_TERMINAL_STATUSES)
+                        TenantContext.requireOrganizationId(), customerId,
+                        startDate, endDate, NON_TERMINAL_STATUSES)
                 : subscriptionRepository.existsOverlappingSubscriptionExcludingId(
-                        customerId, excludedSubscriptionId, startDate, endDate, NON_TERMINAL_STATUSES);
+                        TenantContext.requireOrganizationId(), customerId, excludedSubscriptionId,
+                        startDate, endDate, NON_TERMINAL_STATUSES);
         if (overlaps) {
             throw new ConflictException(
                     "Le client possède déjà un abonnement planifié ou actif sur cette période.");
@@ -230,7 +274,8 @@ public class SubscriptionService implements ISubscriptionService {
     private void updateCustomerSubscriptionFlag(Customer customer) {
         customer.setActiveSubscription(!Boolean.FALSE.equals(customer.getEnabled())
                 && subscriptionRepository.hasActiveSubscription(
-                customer.getId(), SubscriptionStatus.ACTIVE, LocalDate.now(clock)));
+                customer.getOrganization().getId(), customer.getId(),
+                SubscriptionStatus.ACTIVE, LocalDate.now(clock)));
         customerRepository.save(customer);
     }
 }

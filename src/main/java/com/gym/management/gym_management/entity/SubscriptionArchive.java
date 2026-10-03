@@ -16,6 +16,10 @@ public class SubscriptionArchive {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "organization_id", nullable = false)
+    private Organization organization;
+
     @ManyToOne
     @JoinColumn(name = "customer_id", nullable = false)
     private Customer customer;
@@ -37,6 +41,7 @@ public class SubscriptionArchive {
     // Méthode pour archiver un abonnement supprimé
     public void archiveSubscription(Subscription subscription) {
         this.customer = subscription.getCustomer();
+        this.organization = subscription.getOrganization();
         this.pack = subscription.getPack();
         this.startDate = subscription.getStartDate();
         this.endDate = subscription.getEndDate();
@@ -50,6 +55,14 @@ public class SubscriptionArchive {
 
     public Long getId() {
         return id;
+    }
+
+    public Organization getOrganization() {
+        return organization;
+    }
+
+    public void setOrganization(Organization organization) {
+        this.organization = organization;
     }
 
     public void setId(Long id) {
